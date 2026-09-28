@@ -1,0 +1,6 @@
+pyserial>=3.5
+opencv-python>=4.8
+pillow>=10.0
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24

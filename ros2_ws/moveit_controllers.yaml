@@ -1,0 +1,27 @@
+# moveit_controllers.yaml
+# ------------------------------------------------------------
+# Drop this into your MoveIt2 config package (moveit_config/config/),
+# overwriting the file MoveIt Setup Assistant generates, OR merge the
+# controller entry into what it generates. This tells MoveIt to send
+# FollowJointTrajectory goals to the "arm_controller" action server,
+# which is exactly the name arduino_arm_bridge.py advertises
+# (arm_controller/follow_joint_trajectory).
+# ------------------------------------------------------------
+
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+
+  arm_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - joint_base
+      - joint_shoulder
+      - joint_elbow
+      - joint_wrist_pitch
+      - joint_wrist_roll
+      - joint_gripper

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>6-Axis Arm — Serial Control</title>
+<style>
+  :root{
+    --bg:#12151a; --panel:#1b2028; --line:#2a313d;
+    --text:#e8ecf1; --dim:#8b95a5;
+    --sg90:#4fb0ff; --mg995:#ff9d4d; --ok:#3ddc84; --err:#ff5c5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Courier New', ui-monospace, monospace;
+    padding:24px; display:flex; flex-direction:column; align-items:center;
+  }
+  h1{font-size:15px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); margin:0 0 4px;}
+  .sub{font-size:12px; color:var(--dim); margin-bottom:20px;}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:20px; width:min(560px, 92vw);
+  }
+  .connbar{display:flex; gap:10px; align-items:center; margin-bottom:18px;}
+  button{
+    background:#232a35; color:var(--text); border:1px solid var(--line);
+    border-radius:4px; padding:9px 16px; font-family:inherit; font-size:13px;
+    cursor:pointer; letter-spacing:0.5px;
+  }
+  button:hover{border-color:#4a5566;}
+  button.primary{background:#2d3f34; border-color:#3a5c47;}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+  .status{font-size:12px; color:var(--dim);}
+  .status.on{color:var(--ok);}
+  .status.err{color:var(--err);}
+  .joint{margin-bottom:14px;}
+  .joint-head{display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;}
+  .joint-name{color:var(--text);}
+  .joint-type{font-size:10px; padding:1px 6px; border-radius:3px; margin-left:6px;}
+  .sg90 .joint-type{background:rgba(79,176,255,0.15); color:var(--sg90); border:1px solid rgba(79,176,255,0.35);}
+  .mg995 .joint-type{background:rgba(255,157,77,0.15); color:var(--mg995); border:1px solid rgba(255,157,77,0.35);}
+  .joint-val{color:var(--dim);}
+  input[type=range]{
+    width:100%; -webkit-appearance:none; height:4px; border-radius:2px; background:#2a313d; outline:none;
+  }
+  .sg90 input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--sg90); cursor:pointer;
+  }
+  .mg995 input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--mg995); cursor:pointer;
+  }
+  .row2{display:flex; gap:10px; margin-top:18px;}
+  .log{
+    margin-top:16px; background:#0d0f13; border:1px solid var(--line); border-radius:4px;
+    padding:10px; height:90px; overflow-y:auto; font-size:11px; color:var(--dim);
+  }
+  .footnote{font-size:11px; color:var(--dim); margin-top:14px; line-height:1.5;}
+</style>
+</head>
+<body>
+
+  <h1>Arm Control</h1>
+  <div class="sub">6-DOF · PCA9685 over USB serial (Web Serial API — Chrome/Edge)</div>
+
+  <div class="panel">
+    <div class="connbar">
+      <button class="primary" id="connectBtn">Connect to Arduino</button>
+      <button id="homeBtn" disabled>Home</button>
+      <span class="status" id="status">not connected</span>
+    </div>
+
+    <div id="joints"></div>
+
+    <div class="row2">
+      <label style="font-size:12px; color:var(--dim); display:flex; align-items:center; gap:8px;">
+        Speed
+        <input type="range" id="speed" min="5" max="60" value="15" style="width:120px;">
+        <span id="speedVal">15ms</span>
+      </label>
+    </div>
+
+    <div class="log" id="log"></div>
+    <div class="footnote">
+      Blue = SG90 (light joints) · Orange = MG995 (high-torque joints).<br>
+      Sliders send comma-separated angles "a0,a1,a2,a3,a4,a5\n" to the Arduino sketch.
+    </div>
+  </div>
+
+<script>
+const JOINTS = [
+  {name:"J0 · Wrist Roll",  type:"sg90"},
+  {name:"J1 · Wrist Pitch", type:"sg90"},
+  {name:"J2 · Gripper",     type:"sg90"},
+  {name:"J3 · Base Rotate", type:"mg995"},
+  {name:"J4 · Shoulder",    type:"mg995"},
+  {name:"J5 · Elbow",       type:"mg995"},
+];
+
+let port, writer, reader;
+let angles = new Array(6).fill(90);
+let sendTimer = null;
+
+const jointsEl = document.getElementById('joints');
+JOINTS.forEach((j, i) => {
+  const div = document.createElement('div');
+  div.className = `joint ${j.type}`;
+  div.innerHTML = `
+    <div class="joint-head">
+      <span class="joint-name">${j.name}<span class="joint-type">${j.type.toUpperCase()}</span></span>
+      <span class="joint-val" id="val${i}">90°</span>
+    </div>
+    <input type="range" min="0" max="180" value="90" id="slider${i}">
+  `;
+  jointsEl.appendChild(div);
+  const slider = div.querySelector(`#slider${i}`);
+  slider.addEventListener('input', () => {
+    angles[i] = parseInt(slider.value);
+    document.getElementById(`val${i}`).textContent = angles[i] + '°';
+    queueSend();
+  });
+});
+
+document.getElementById('speed').addEventListener('input', (e) => {
+  document.getElementById('speedVal').textContent = e.target.value + 'ms';
+  sendLine(`SPEED,${e.target.value}`);
+});
+
+function log(msg) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.textContent = `> ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function queueSend() {
+  // throttle to ~20 sends/sec so the serial link and Arduino parser aren't flooded
+  if (sendTimer) return;
+  sendTimer = setTimeout(() => {
+    sendLine(angles.join(','));
+    sendTimer = null;
+  }, 50);
+}
+
+async function sendLine(line) {
+  if (!writer) return;
+  try {
+    await writer.write(new TextEncoder().encode(line + '\n'));
+    log(line);
+  } catch (err) {
+    log('send error: ' + err.message);
+  }
+}
+
+async function connect() {
+  if (!('serial' in navigator)) {
+    setStatus('Web Serial not supported — use Chrome or Edge on desktop', true);
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    readLoop();
+    setStatus('connected', false, true);
+    document.getElementById('homeBtn').disabled = false;
+    document.getElementById('connectBtn').textContent = 'Reconnect';
+  } catch (err) {
+    setStatus('connection failed: ' + err.message, true);
+  }
+}
+
+async function readLoop() {
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) log(decoder.decode(value).trim());
+    }
+  } catch (err) {
+    log('read loop ended: ' + err.message);
+  }
+}
+
+function setStatus(text, isErr = false, isOn = false) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = 'status' + (isErr ? ' err' : isOn ? ' on' : '');
+}
+
+document.getElementById('connectBtn').addEventListener('click', connect);
+document.getElementById('homeBtn').addEventListener('click', () => {
+  sendLine('HOME');
+  angles = new Array(6).fill(90);
+  JOINTS.forEach((_, i) => {
+    document.getElementById(`slider${i}`).value = 90;
+    document.getElementById(`val${i}`).textContent = '90°';
+  });
+});
+</script>
+</body>
+</html>

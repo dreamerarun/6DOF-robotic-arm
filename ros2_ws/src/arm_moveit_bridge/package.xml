@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>arm_moveit_bridge</name>
+  <version>0.1.0</version>
+  <description>Bridges MoveIt2 FollowJointTrajectory goals to an Arduino Uno + PCA9685 6-axis servo arm over serial</description>
+  <maintainer email="you@example.com">arun</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>6-Axis Arm Control</title>
+<style>
+  :root {
+    --bg: #0f1417;
+    --panel: #171e23;
+    --line: #2a343a;
+    --text: #dfe7eb;
+    --dim: #7f9099;
+    --accent: #4fd1a5;
+    --accent-dim: #245c48;
+    --warn: #e0a13c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 4px 0;
+  }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 20px; }
+  .top-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent-dim); border-color: var(--accent); color: #eafff5; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .status-dot {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: #5a4646; margin-right: 6px;
+  }
+  .status-dot.on { background: var(--accent); }
+  .status { font-size: 13px; color: var(--dim); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .joint {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .joint-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .joint-name { font-size: 13px; color: var(--text); }
+  .joint-type { font-size: 11px; color: var(--dim); }
+  .joint-val { font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .bottom-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .speed-label { font-size: 13px; color: var(--dim); }
+
+  #log {
+    background: #0b0f12;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    height: 130px;
+    overflow-y: auto;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .warn { color: var(--warn); font-size: 12px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+
+<h1>6-Axis Arm Control</h1>
+<div class="sub">Web Serial &rarr; Arduino Uno &rarr; PCA9685 &rarr; servos</div>
+
+<div class="warn">Requires Chrome or Edge on desktop (Web Serial API). Power the servo rail from an external 5&ndash;6V supply, not from the Arduino.</div>
+
+<div class="top-row">
+  <button id="connectBtn" class="primary">Connect</button>
+  <span class="status"><span id="statusDot" class="status-dot"></span><span id="statusText">Disconnected</span></span>
+  <button id="homeBtn" disabled>Home</button>
+  <button id="readBtn" disabled>Read Pose</button>
+</div>
+
+<div class="grid" id="jointGrid"></div>
+
+<div class="bottom-row">
+  <span class="speed-label">Step delay (ms)</span>
+  <input type="range" id="speedSlider" min="5" max="60" value="15" style="width:160px">
+  <span id="speedVal" class="joint-val">15</span>
+  <button id="sendSpeedBtn" disabled>Apply Speed</button>
+</div>
+
+<div id="log"></div>
+
+<script>
+const joints = [
+  { name: "Base rotation", type: "MG995" },
+  { name: "Shoulder",      type: "MG995" },
+  { name: "Elbow",         type: "MG995" },
+  { name: "Wrist pitch",   type: "SG90" },
+  { name: "Wrist roll",    type: "SG90" },
+  { name: "Gripper",       type: "SG90" },
+];
+
+let port, writer, reader;
+let angles = new Array(6).fill(90);
+let sendTimer = null;
+
+const grid = document.getElementById("jointGrid");
+joints.forEach((j, idx) => {
+  const div = document.createElement("div");
+  div.className = "joint";
+  div.innerHTML = `
+    <div class="joint-head">
+      <span class="joint-name">${j.name}</span>
+      <span class="joint-type">${j.type}</span>
+      <span class="joint-val" id="val${idx}">90&deg;</span>
+    </div>
+    <input type="range" min="0" max="180" value="90" id="slider${idx}">
+  `;
+  grid.appendChild(div);
+  const slider = div.querySelector(`#slider${idx}`);
+  slider.addEventListener("input", () => {
+    angles[idx] = parseInt(slider.value, 10);
+    document.getElementById(`val${idx}`).textContent = angles[idx] + "\u00b0";
+    queuePoseSend();
+  });
+});
+
+function log(msg) {
+  const el = document.getElementById("log");
+  const line = document.createElement("div");
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function queuePoseSend() {
+  // debounce so dragging a slider doesn't flood the serial link
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(sendPose, 40);
+}
+
+async function sendLine(line) {
+  if (!writer) return;
+  await writer.write(new TextEncoder().encode(line + "\n"));
+  log("> " + line);
+}
+
+async function sendPose() {
+  await sendLine("P," + angles.join(","));
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  const inputDone = port.readable.pipeTo(decoder.writable);
+  reader = decoder.readable.getReader();
+  let buf = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (line) log("< " + line);
+      }
+    }
+  } catch (e) {
+    log("read error: " + e);
+  }
+}
+
+document.getElementById("connectBtn").addEventListener("click", async () => {
+  if (!("serial" in navigator)) {
+    alert("Web Serial API not supported in this browser. Use Chrome or Edge on desktop.");
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    readLoop();
+    document.getElementById("statusDot").classList.add("on");
+    document.getElementById("statusText").textContent = "Connected";
+    document.getElementById("homeBtn").disabled = false;
+    document.getElementById("readBtn").disabled = false;
+    document.getElementById("sendSpeedBtn").disabled = false;
+    document.getElementById("connectBtn").textContent = "Connected";
+    document.getElementById("connectBtn").disabled = true;
+    log("connected");
+  } catch (e) {
+    log("connect failed: " + e);
+  }
+});
+
+document.getElementById("homeBtn").addEventListener("click", () => sendLine("H"));
+document.getElementById("readBtn").addEventListener("click", () => sendLine("?"));
+
+const speedSlider = document.getElementById("speedSlider");
+speedSlider.addEventListener("input", () => {
+  document.getElementById("speedVal").textContent = speedSlider.value;
+});
+document.getElementById("sendSpeedBtn").addEventListener("click", () => {
+  sendLine("SPD," + speedSlider.value);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<!--
+  Generic 6-DOF arm skeleton for use with MoveIt Setup Assistant.
+
+  This is a STARTING POINT, not a finished model: replace the
+  <origin xyz="..."> link-length placeholders below with your actual
+  measured link lengths, and swap the <box>/<cylinder> visuals for
+  real meshes if you have them. Joint names must stay joint_1..joint_6
+  to match arm_moveit_bridge/serial_bridge_node.py and
+  config/moveit_controllers.yaml.
+
+  Mapping to hardware:
+    joint_1 -> PCA9685 CH3 (MG995, base rotate)
+    joint_2 -> PCA9685 CH4 (MG995, shoulder)
+    joint_3 -> PCA9685 CH5 (MG995, elbow)
+    joint_4 -> PCA9685 CH0 (SG90,  wrist roll)
+    joint_5 -> PCA9685 CH1 (SG90,  wrist pitch)
+    joint_6 -> PCA9685 CH2 (SG90,  gripper / wrist yaw)
+
+  Import into MoveIt Setup Assistant to generate the full moveit_config
+  package (planning groups, SRDF, kinematics.yaml, etc).
+-->
+<robot name="six_axis_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <material name="grey"><color rgba="0.6 0.6 0.6 1"/></material>
+  <material name="orange"><color rgba="0.9 0.5 0.1 1"/></material>
+
+  <link name="base_link">
+    <visual>
+      <geometry><cylinder radius="0.05" length="0.02"/></geometry>
+      <material name="grey"/>
+    </visual>
+    <collision><geometry><cylinder radius="0.05" length="0.02"/></geometry></collision>
+  </link>
+
+  <!-- joint_1: base rotate (MG995, CH3) -->
+  <joint name="joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link_1"/>
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="1.5"/>
+  </joint>
+  <link name="link_1">
+    <visual><geometry><box size="0.03 0.03 0.06"/></geometry><material name="orange"/></visual>
+    <collision><geometry><box size="0.03 0.03 0.06"/></geometry></collision>
+  </link>
+
+  <!-- joint_2: shoulder (MG995, CH4) -->
+  <joint name="joint_2" type="revolute">
+    <parent link="link_1"/>
+    <child link="link_2"/>
+    <origin xyz="0 0 0.06" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="1.5"/>
+  </joint>
+  <link name="link_2">
+    <!-- TODO: replace 0.10 with your measured upper-arm length -->
+    <visual><geometry><box size="0.03 0.03 0.10"/></geometry><material name="grey"/></visual>
+    <collision><geometry><box size="0.03 0.03 0.10"/></geometry></collision>
+  </link>
+
+  <!-- joint_3: elbow (MG995, CH5) -->
+  <joint name="joint_3" type="revolute">
+    <parent link="link_2"/>
+    <child link="link_3"/>
+    <origin xyz="0 0 0.10" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="1.5"/>
+  </joint>
+  <link name="link_3">
+    <!-- TODO: replace 0.10 with your measured forearm length -->
+    <visual><geometry><box size="0.025 0.025 0.10"/></geometry><material name="orange"/></visual>
+    <collision><geometry><box size="0.025 0.025 0.10"/></geometry></collision>
+  </link>
+
+  <!-- joint_4: wrist roll (SG90, CH0) -->
+  <joint name="joint_4" type="revolute">
+    <parent link="link_3"/>
+    <child link="link_4"/>
+    <origin xyz="0 0 0.10" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57" upper="1.57" effort="2" velocity="2.0"/>
+  </joint>
+  <link name="link_4">
+    <visual><geometry><cylinder radius="0.012" length="0.03"/></geometry><material name="grey"/></visual>
+    <collision><geometry><cylinder radius="0.012" length="0.03"/></geometry></collision>
+  </link>
+
+  <!-- joint_5: wrist pitch (SG90, CH1) -->
+  <joint name="joint_5" type="revolute">
+    <parent link="link_4"/>
+    <child link="link_5"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.2" upper="1.2" effort="2" velocity="2.0"/>
+  </joint>
+  <link name="link_5">
+    <visual><geometry><box size="0.02 0.02 0.03"/></geometry><material name="orange"/></visual>
+    <collision><geometry><box size="0.02 0.02 0.03"/></geometry></collision>
+  </link>
+
+  <!-- joint_6: gripper / wrist yaw (SG90, CH2) -->
+  <joint name="joint_6" type="revolute">
+    <parent link="link_5"/>
+    <child link="link_6"/>
+    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0" upper="1.2" effort="2" velocity="2.0"/>
+  </joint>
+  <link name="link_6">
+    <visual><geometry><box size="0.02 0.04 0.02"/></geometry><material name="grey"/></visual>
+    <collision><geometry><box size="0.02 0.04 0.02"/></geometry></collision>
+  </link>
+
+</robot>

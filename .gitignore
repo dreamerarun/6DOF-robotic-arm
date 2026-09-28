@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+serial.log
+
+# Model checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+
+# Training outputs
+checkpoints/
+*_ckpt/
+*_ckpt_*/
+smolvla_out_ckpt/
+smolvla_out_v3_ckpt_18k/
+smolvla_out_v3_ckpt_final/
+smolvla_out_v4_ckpt/
+smolvla_quicktest_ckpt/
+
+# Datasets
+dataset/
+dataset_white/
+trajectories/
+"sucessful dataset"/
+"old dataset"/
+
+# LeRobot / ML outputs
+wandb/
+runs/
+logs/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets
+.env
+*.env
+
+# Large trained models - hosted on Hugging Face
+python_control/smolvla_out_ckpt/
+python_control/smolvla_out_v3_ckpt_18k/
+python_control/smolvla_out_v3_ckpt_final/
+python_control/smolvla_out_v4_ckpt/
+
+# Large datasets - hosted separately
+python_control/dataset/
+python_control/dataset_white/
+python_control/sucessful dataset/
+python_control/old dataset/
+
+# Large training checkpoints
+python_control/checkpoints/
+
+# Root-level large dataset
+"old dataset"/
+
+# Root-level large dataset
+"old dataset"/
+
+# Root-level large dataset
+old dataset/
+
+# ROS 2 generated files
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
